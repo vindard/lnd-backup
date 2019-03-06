@@ -35,6 +35,8 @@ rsync -avh --delete --progress ${DATADIR}/ ${BACKUPFOLDER}/
 tar cvf ${BACKUPFILE} ${BACKUPFOLDER}/
 chown -R ${ADMINUSER}:${ADMINUSER} ${BACKUPFOLDER} ${BACKUPFILE}
 
+# TODO: gpg encrypt before uploading
+
 #==============================
 # The archive file can be backed up via rsync or a cloud service now.
 
