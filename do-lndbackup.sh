@@ -6,6 +6,9 @@ APITOKEN=<DROPBOX-API-KEY>
 # SET ADMIN USER
 ADMINUSER=<admin-user>
 
+# SET GPG KEY FOR ENCRYPTING WITH
+GPG=""
+
 #==============================
 
 DATE=$(date +%Y%m%d)
@@ -35,7 +38,21 @@ rsync -avh --delete --progress ${DATADIR}/ ${BACKUPFOLDER}/
 tar cvf ${BACKUPFILE} ${BACKUPFOLDER}/
 chown -R ${ADMINUSER}:${ADMINUSER} ${BACKUPFOLDER} ${BACKUPFILE}
 
-# TODO: gpg encrypt before uploading
+# GPG ENCRYPT ARCHIVE
+function encrypt_backup {
+	GPGNOTFOUND=$(gpg -k ${GPG} 2>&1 >/dev/null | grep -c error)
+	if [ $GPGNOTFOUND -gt 0 ]; then
+		gpg --recv-keys ${GPG}
+	fi
+
+	gpg --trust-model always -r ${GPG} -e ${BACKUPFILE}
+	rm ${BACKUPFILE}
+	BACKUPFILE=$BACKUPFILE.gpg
+}
+
+if [ ! -z $GPG ] ; then
+	encrypt_backup
+fi
 
 #==============================
 # The archive file can be backed up via rsync or a cloud service now.
