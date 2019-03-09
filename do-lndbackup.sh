@@ -95,13 +95,13 @@ function upload_to_dropbox {
 	echo "Uploading "${BACKUPFILE}"..."
 	FINISH=$(curl -X POST https://content.dropboxapi.com/2/files/upload_session/finish \
 	    --header "Authorization: Bearer "${APITOKEN}"" \
-	    --header "Dropbox-API-Arg: {\"cursor\": {\"session_id\": \""${SESSIONID}"\",\"offset\": 0},\"commit\": {\"path\": \"/"${BACKUPFILE}"\",\"mode\": \"add\",\"autorename\": true,\"mute\": false,\"strict_conflict\": false}}" \
+	    --header "Dropbox-API-Arg: {\"cursor\": {\"session_id\": \""${SESSIONID}"\",\"offset\": 0},\"commit\": {\"path\": \"/"${BACKUPFOLDER}"/"${BACKUPFILE}"\",\"mode\": \"add\",\"autorename\": true,\"mute\": false,\"strict_conflict\": false}}" \
 	    --header "Content-Type: application/octet-stream" \
 	    --data-binary @$BACKUPFILE)
 	echo $FINISH | jq
 }
 
-if [ $ONLINE = true ] ; then
+if [ $ONLINE = true -a -e ${BACKUPFILE} ] ; then
 	upload_to_dropbox
 else
 	echo "Please check that the internet is connected and try again."
