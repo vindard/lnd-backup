@@ -31,6 +31,20 @@ if [[ ! -e ${BACKUPFOLDER} ]]; then
         mkdir -p ${BACKUPFOLDER}
 fi
 
+# CHECK IF LND IS ACTIVE
+systemctl -q is-active lnd
+#kill -0 $(pidof lnd)
+if [[ $? -eq 0 ]]; then
+        LNDSTOPPED=false
+else
+        LNDSTOPPED=true
+fi
+
+# Signal whether this is a stopped-lnd backup or not
+if [ $LNDSTOPPED = true ] ; then
+	BACKUPFILE="[stopped]-"$BACKUPFILE
+fi
+
 # COPY DATA FOR BACKUP
 rsync -avh --delete --progress ${DATADIR}/ ${BACKUPFOLDER}/
 
