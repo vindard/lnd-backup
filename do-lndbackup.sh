@@ -6,14 +6,20 @@ APITOKEN=<DROPBOX-API-KEY>
 # SET ADMIN USER
 ADMINUSER=<admin-user>
 
-# SET GPG KEY FOR ENCRYPTING WITH
+# OPTIONAL, SET GPG KEY FOR ENCRYPTING WITH (COMPRESSES AS WELL)
 GPG=""
+
+# OPTIONAL, SET A DEVICE NAME TO BE USED FOR BACKUPS
+DEVICE=""
 
 #==============================
 
 DATE=$(date +%Y%m%d)
 TIME=$(date +%Hh%Mm)
-DEVICE=$(echo $(cat /etc/hostname) | awk '{print tolower($0)}')
+if [ -z "$DEVICE" ] ; then
+	DEVICE=$(echo $(cat /etc/hostname))
+fi
+DEVICE=$(echo $DEVICE | awk '{print tolower($0)}' | sed -e 's/ /-/g')
 
 # Setup folders and filenames
 DATADIR=/home/bitcoin/.lnd
@@ -31,24 +37,54 @@ if [[ ! -e ${BACKUPFOLDER} ]]; then
         mkdir -p ${BACKUPFOLDER}
 fi
 
-# CHECK IF LND IS ACTIVE
-systemctl -q is-active lnd
-#kill -0 $(pidof lnd)
-if [[ $? -eq 0 ]]; then
-        LNDSTOPPED=false
-else
-        LNDSTOPPED=true
-fi
+# Function to stop lnd
+function stop_lnd {
+	systemctl stop lnd
+	echo
+	echo "Stopping lnd..."
+	/bin/sleep 5s
+	systemctl -q is-active lnd
+	#kill -0 $(pidof lnd)
+	if [[ $? -eq 0 ]]; then
+	        LNDSTOPPED=false
+	else
+	        LNDSTOPPED=true
+	fi
+}
 
-# Signal whether this is a stopped-lnd backup or not
+# STOP LND
+max_tries=5
+count=0
+
+stop_lnd
+while [ ! $LNDSTOPPED = true -a $count -lt $max_tries ] ; do
+	stop_lnd
+	count=$(($count+1))
+done
+
+# SIGNAL IF LND WAS STOPPED
 if [ $LNDSTOPPED = true ] ; then
+	echo "lnd successfully stopped!"
+	echo
 	BACKUPFILE="[stopped]-"$BACKUPFILE
+else
+	echo "Sorry, lnd could not be stopped."
+	echo
+	BACKUPFILE="[inflight]-"$BACKUPFILE
 fi
 
 # COPY DATA FOR BACKUP
+echo "------------"
+echo "Starting rsync..."
 rsync -avh --delete --progress ${DATADIR}/ ${BACKUPFOLDER}/
 
+# RESTART LND (AFTER COPY)
+systemctl start lnd
+echo "Restarted lnd!"
+
 # CREATE ARCHIVE OF DATA TO BE UPLOADED
+echo "------------"
+echo "Creating tar archive of files..."
 tar cvf ${BACKUPFILE} ${BACKUPFOLDER}/
 chown -R ${ADMINUSER}:${ADMINUSER} ${BACKUPFOLDER} ${BACKUPFILE}
 
@@ -65,6 +101,8 @@ function encrypt_backup {
 }
 
 if [ ! -z $GPG ] ; then
+	echo "------------"
+	echo "Starting gpg encryption..."
 	encrypt_backup
 fi
 
