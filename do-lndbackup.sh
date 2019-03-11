@@ -16,6 +16,9 @@ DEVICE=""
 lnd_dir="/home/bitcoin/.lnd"
 bitcoin_dir="/home/bitcoin/.bitcoin"
 
+# TRUE, TO STOP LND AND DUMP DATA IF POSSIBLE FOR BACKUP
+STOP=true
+
 #==============================
 
 DATE=$(date +%Y%m%d)
@@ -59,11 +62,13 @@ function check_lnd_status {
 
 # Function to stop lnd
 function stop_lnd {
-	systemctl stop lnd
-	echo
-	echo "Stopping lnd..."
-	/bin/sleep 5s
-	check_lnd_status
+	if [ $STOP = true ] ; then
+		systemctl stop lnd
+		echo
+		echo "Stopping lnd..."
+		/bin/sleep 5s
+		check_lnd_status
+	fi
 }
 
 
@@ -115,7 +120,7 @@ fi
 #==================
 
 # ENSURE LND WAS SUCCESSFULLY STOPPED
-max_tries=5
+max_tries=2
 count=0
 while [ ! $LNDSTOPPED = true -a $count -lt $max_tries ] ; do
 	stop_lnd
@@ -124,13 +129,17 @@ done
 
 # SIGNAL IF LND WAS STOPPED
 if [ $LNDSTOPPED = true ] ; then
+	BACKUPFILE="[stopped]-"$BACKUPFILE
 	echo "lnd successfully stopped!"
 	echo
-	BACKUPFILE="[stopped]-"$BACKUPFILE
 else
-	echo "Sorry, lnd could not be stopped."
-	echo
 	BACKUPFILE="[inflight]-"$BACKUPFILE
+	if [ ! $STOP = true ] ; then
+		echo "Running in-flight backup!"
+	else
+		echo "Sorry, lnd could not be stopped."
+	fi
+	echo
 fi
 
 # COPY DATA FOR BACKUP
