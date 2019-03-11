@@ -12,6 +12,10 @@ GPG=""
 # OPTIONAL, SET A DEVICE NAME TO BE USED FOR BACKUPS
 DEVICE=""
 
+# LND/BITCOIND PATHS
+lnd_dir="/home/bitcoin/.lnd"
+bitcoin_dir="/home/bitcoin/.bitcoin"
+
 #==============================
 
 DATE=$(date +%Y%m%d)
@@ -26,6 +30,7 @@ DATADIR=/home/bitcoin/.lnd
 WORKINGDIR=/home/$ADMINUSER/data-backups
 BACKUPFOLDER=.lndbackup-$DEVICE
 BACKUPFILE=lndbackup-$DEVICE--$DATE-$TIME.tar
+CHANSTATEFILE=.chan_state.txt
 
 # Make sure necessary folders exist
 if [[ ! -e ${WORKINGDIR} ]]; then
@@ -37,12 +42,12 @@ if [[ ! -e ${BACKUPFOLDER} ]]; then
         mkdir -p ${BACKUPFOLDER}
 fi
 
-# Function to stop lnd
-function stop_lnd {
-	systemctl stop lnd
-	echo
-	echo "Stopping lnd..."
-	/bin/sleep 5s
+#==================
+# CHECK CHANNEL STATE TO DETERMINE IF TO CONTINUE WITH BACKUP
+#==================
+
+# Function to check lnd status
+function check_lnd_status {
 	systemctl -q is-active lnd
 	#kill -0 $(pidof lnd)
 	if [[ $? -eq 0 ]]; then
@@ -52,11 +57,66 @@ function stop_lnd {
 	fi
 }
 
-# STOP LND
+# Function to stop lnd
+function stop_lnd {
+	systemctl stop lnd
+	echo
+	echo "Stopping lnd..."
+	/bin/sleep 5s
+	check_lnd_status
+}
+
+
+# SETUP LNCLI COMMAND FOR ROOT USER
+chain="$(bitcoin-cli -datadir=${bitcoin_dir} getblockchaininfo | jq -r '.chain')"
+if [[ $chain = "test" ]] ; then
+  macaroon_path="${lnd_dir}/data/chain/bitcoin/testnet/readonly.macaroon"
+else
+  macaroon_path="${lnd_dir}/data/chain/bitcoin/mainnet/readonly.macaroon"
+fi
+lncli_creds=( --macaroonpath=${macaroon_path} --tlscertpath=${lnd_dir}/tls.cert)
+
+# GET LND CHANNEL STATE
+if [[ ! -e ${CHANSTATEFILE} ]]; then
+	LAST_STATE=0
+else
+	LAST_STATE=$(tail -n 1 ${CHANSTATEFILE})
+fi
+
+check_lnd_status
+if [ ! $LNDSTOPPED = true ] ; then
+	ROUTED=$(lncli $"${lncli_creds[@]}" fwdinghistory --start_time 1 --end_time 2000000000 | jq -r .last_offset_index)
+	INVOICES=$(lncli $"${lncli_creds[@]}" listinvoices | jq -r .last_index_offset)
+	PAYMENTS=$(lncli $"${lncli_creds[@]}" listpayments | jq '.payments | length')
+	CHAN_STATE=$(($ROUTED + $INVOICES + $PAYMENTS))
+	echo "---" >> $CHANSTATEFILE
+	echo "$? $(date)" >> $CHANSTATEFILE
+	echo $CHAN_STATE >> $CHANSTATEFILE
+	BACKUPFILE=${BACKUPFILE::-4}"--state-"$(printf "%04d\n" $((${CHAN_STATE}))).tar
+
+	STATE_CHANGE=$(("$LAST_STATE" - "$CHAN_STATE"))
+
+	stop_lnd
+else
+	STATE_CHANGE=-1
+fi
+
+echo "State change: "$STATE_CHANGE
+if [[ $STATE_CHANGE -eq 0 ]] ; then
+        echo "No channel state change detected"
+	/bin/sleep 0.5
+	echo "exiting..."
+        /bin/sleep 1
+        exit
+fi
+
+#==================
+# ...exits above if no state change detected
+#==================
+
+# ENSURE LND WAS SUCCESSFULLY STOPPED
 max_tries=5
 count=0
-
-stop_lnd
 while [ ! $LNDSTOPPED = true -a $count -lt $max_tries ] ; do
 	stop_lnd
 	count=$(($count+1))
