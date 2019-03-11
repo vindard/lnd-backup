@@ -90,9 +90,11 @@ fi
 
 check_lnd_status
 if [ ! $LNDSTOPPED = true ] ; then
+	# <start> LND CHANNEL STATE CHECKS
 	ROUTED=$(lncli $"${lncli_creds[@]}" fwdinghistory --start_time 1 --end_time 2000000000 | jq -r .last_offset_index)
 	INVOICES=$(lncli $"${lncli_creds[@]}" listinvoices | jq -r .last_index_offset)
 	PAYMENTS=$(lncli $"${lncli_creds[@]}" listpayments | jq '.payments | length')
+	# < end > LND CHANNEL STATE CHECKS
 	CHAN_STATE=$(($ROUTED + $INVOICES + $PAYMENTS))
 	echo "---" >> $CHANSTATEFILE
 	echo "$? $(date)" >> $CHANSTATEFILE
