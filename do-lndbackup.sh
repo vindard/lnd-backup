@@ -16,8 +16,11 @@ DEVICE=""
 lnd_dir="/home/bitcoin/.lnd"
 bitcoin_dir="/home/bitcoin/.bitcoin"
 
-# TRUE, TO STOP LND AND DUMP DATA IF POSSIBLE FOR BACKUP
-STOP=true
+# IF TRUE, STOP LND AND DUMP DATA IF POSSIBLE FOR BACKUP
+STOP_LND=false
+
+# IF TRUE, BACKUP WHETHER STATE CHANGE OR NOT
+STATE_IGNORE=true
 
 #==============================
 
@@ -62,7 +65,7 @@ function check_lnd_status {
 
 # Function to stop lnd
 function stop_lnd {
-	if [ $STOP = true ] ; then
+	if [ $STOP_LND = true ] ; then
 		systemctl stop lnd
 		echo
 		echo "Stopping lnd..."
@@ -109,7 +112,7 @@ else
 fi
 
 echo "State change: "$STATE_CHANGE
-if [[ $STATE_CHANGE -eq 0 ]] ; then
+if [[ $STATE_CHANGE -eq 0 && ! $STATE_IGNORE -eq true ]] ; then
         echo "No channel state change detected"
 	/bin/sleep 0.5
 	echo "exiting..."
@@ -136,7 +139,7 @@ if [ $LNDSTOPPED = true ] ; then
 	echo
 else
 	BACKUPFILE="[inflight]-"$BACKUPFILE
-	if [ ! $STOP = true ] ; then
+	if [ ! $STOP_LND = true ] ; then
 		echo "Running in-flight backup!"
 	else
 		echo "Sorry, lnd could not be stopped."
