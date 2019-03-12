@@ -28,7 +28,7 @@ while getopts f:s: opt; do
   case $opt in
     f) STATE_IGNORE=$OPTARG ;;
     s) STOP_LND=$OPTARG ;;
-   esac
+  esac
 done
 
 DATE=$(date +%Y%m%d)
@@ -94,6 +94,8 @@ lncli_creds=( --macaroonpath=${macaroon_path} --tlscertpath=${lnd_dir}/tls.cert)
 # GET LND CHANNEL STATE
 if [[ ! -e ${CHANSTATEFILE} ]]; then
 	LAST_STATE=0
+elif [ ! $STOP_LND = false ] ; then
+	LAST_STATE=$(tail -n 100 ${CHANSTATEFILE} | grep stopped | jq -r .stopped | tail -n 1)
 else
 	LAST_STATE=$(tail -n 1 ${CHANSTATEFILE})
 fi
@@ -108,6 +110,9 @@ if [ ! $LNDSTOPPED = true ] ; then
 	CHAN_STATE=$(($ROUTED + $INVOICES + $PAYMENTS))
 	echo "---" >> $CHANSTATEFILE
 	echo "$? $(date)" >> $CHANSTATEFILE
+	if [ ! $STOP_LND = false ] ; then
+		echo "{\"stopped\": \""$CHAN_STATE"\"}" >> $CHANSTATEFILE
+	fi
 	echo $CHAN_STATE >> $CHANSTATEFILE
 	BACKUPFILE=${BACKUPFILE::-4}"--state-"$(printf "%04d\n" $((${CHAN_STATE}))).tar
 
