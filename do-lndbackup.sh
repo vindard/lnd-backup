@@ -20,9 +20,16 @@ bitcoin_dir="/home/bitcoin/.bitcoin"
 STOP_LND=false
 
 # IF TRUE, BACKUP WHETHER STATE CHANGE OR NOT
-STATE_IGNORE=true
+STATE_IGNORE=false
 
 #==============================
+
+while getopts f:s: opt; do
+  case $opt in
+    f) STATE_IGNORE=$OPTARG ;;
+    s) STOP_LND=$OPTARG ;;
+   esac
+done
 
 DATE=$(date +%Y%m%d)
 TIME=$(date +%Hh%Mm)
@@ -65,7 +72,7 @@ function check_lnd_status {
 
 # Function to stop lnd
 function stop_lnd {
-	if [ $STOP_LND = true ] ; then
+	if [ ! $STOP_LND = false ] ; then
 		systemctl stop lnd
 		echo
 		echo "Stopping lnd..."
@@ -106,18 +113,19 @@ if [ ! $LNDSTOPPED = true ] ; then
 
 	STATE_CHANGE=$(("$LAST_STATE" - "$CHAN_STATE"))
 
-	stop_lnd
 else
 	STATE_CHANGE=-1
 fi
 
 echo "State change: "$STATE_CHANGE
-if [[ $STATE_CHANGE -eq 0 && ! $STATE_IGNORE -eq true ]] ; then
+if [[ $STATE_CHANGE -eq 0 && $STATE_IGNORE = false ]] ; then
         echo "No channel state change detected"
 	/bin/sleep 0.5
 	echo "exiting..."
         /bin/sleep 1
         exit
+else
+	stop_lnd
 fi
 
 #==================
@@ -139,7 +147,7 @@ if [ $LNDSTOPPED = true ] ; then
 	echo
 else
 	BACKUPFILE="[inflight]-"$BACKUPFILE
-	if [ ! $STOP_LND = true ] ; then
+	if [ $STOP_LND = false ] ; then
 		echo "Running in-flight backup!"
 	else
 		echo "Sorry, lnd could not be stopped."
@@ -153,8 +161,10 @@ echo "Starting rsync..."
 rsync -avh --delete --progress ${DATADIR}/ ${BACKUPFOLDER}/
 
 # RESTART LND (AFTER COPY)
-systemctl start lnd
-echo "Restarted lnd!"
+if [ $LNDSTOPPED = true ] ; then
+	systemctl start lnd
+	echo "Restarted lnd!"
+fi
 
 # CREATE ARCHIVE OF DATA TO BE UPLOADED
 echo "------------"
