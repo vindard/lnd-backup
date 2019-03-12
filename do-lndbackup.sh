@@ -138,11 +138,12 @@ fi
 #==================
 
 # ENSURE LND WAS SUCCESSFULLY STOPPED
-max_tries=2
+max_tries=4
 count=0
-while [ ! $LNDSTOPPED = true -a $count -lt $max_tries ] ; do
-	stop_lnd
-	count=$(($count+1))
+while [[ ! $LNDSTOPPED = true && $count -lt $(($max_tries - 1)) ]] ; do
+        stop_lnd
+        count=$(($count+1))
+        echo "Lnd stop, attempt#: "$(( $count  + 1 ))" of "$max_tries
 done
 
 # SIGNAL IF LND WAS STOPPED
