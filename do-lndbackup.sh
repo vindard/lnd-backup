@@ -24,11 +24,12 @@ STATE_IGNORE=false
 
 #==============================
 
-while getopts f:s: opt; do
-  case $opt in
-    f) STATE_IGNORE=$OPTARG ;;
-    s) STOP_LND=$OPTARG ;;
-  esac
+for f in $@
+do
+	case $f in
+		"-f") STATE_IGNORE=true ;;
+		"-s") STOP_LND=true ;;
+	esac
 done
 
 DATE=$(date +%Y%m%d)
