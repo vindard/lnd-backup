@@ -1,29 +1,30 @@
 #!/bin/bash
 
-# DROPBOX API KEY
-APITOKEN=<DROPBOX-API-KEY>
-
-# SET ADMIN USER
-ADMINUSER=<admin-user>
-
-# OPTIONAL, SET GPG KEY FOR ENCRYPTING WITH (COMPRESSES AS WELL)
-GPG=""
-
-# OPTIONAL, SET A DEVICE NAME TO BE USED FOR BACKUPS
-DEVICE=""
-
-# LND/BITCOIND PATHS
-lnd_dir="/home/bitcoin/.lnd"
-bitcoin_dir="/home/bitcoin/.bitcoin"
-
-# IF TRUE, STOP LND AND DUMP DATA IF POSSIBLE FOR BACKUP
-STOP_LND=false
-
-# IF TRUE, BACKUP WHETHER STATE CHANGE OR NOT
-STATE_IGNORE=false
-
+#==============================
+# OPTIONAL USER HARDCODED VARIABLES
 #==============================
 
+# SET DROPBOX API KEY FOR UPLOADS
+APITOKEN=""
+
+# SET GPG KEY FOR ENCRYPTING WITH (COMPRESSES AS WELL)
+GPG=""
+
+# SET A DEVICE NAME TO BE USED FOR BACKUPS, DEFAULTS TO /etc/hostname
+DEVICE=""
+
+
+#==============================
+# SETUP REQUIRED ENVIRONMENT VARIABLES
+#==============================
+
+# if true, stop lnd and dump data if possible for backup
+STOP_LND=false
+
+# if true, backup whether state change or not
+STATE_IGNORE=false
+
+# Flags
 for f in $@
 do
 	case $f in
@@ -31,6 +32,21 @@ do
 		"-s") STOP_LND=true ;;
 	esac
 done
+
+# Arguments
+while getopts :d: opt; do
+        case $opt in
+                d) APITOKEN=$OPTARG ;;
+                ?) ;;
+        esac
+done
+
+# lnd/bitcoind paths
+lnd_dir="/home/bitcoin/.lnd"
+bitcoin_dir="/home/bitcoin/.bitcoin"
+
+# Fetches the user whose home folder the directories will be stored under
+ADMINUSER=$(getent passwd | grep /bin/bash | grep -v 'root\|bitcoin' | tail -n 1 | grep -oE '/[^/]+:' | cut -c2- | rev | cut -c2- | rev)
 
 DATE=$(date +%Y%m%d)
 TIME=$(date +%Hh%Mm)
@@ -55,6 +71,8 @@ cd ${WORKINGDIR}
 if [[ ! -e ${BACKUPFOLDER} ]]; then
         mkdir -p ${BACKUPFOLDER}
 fi
+
+
 
 #==================
 # CHECK CHANNEL STATE TO DETERMINE IF TO CONTINUE WITH BACKUP
@@ -82,6 +100,15 @@ function stop_lnd {
 	fi
 }
 
+# Function to fetch channel state
+function fetch_channel_state {
+	ROUTED=$(lncli $"${lncli_creds[@]}" fwdinghistory --start_time 1 --end_time 2000000000 | jq -r .last_offset_index)
+	INVOICES=$(lncli $"${lncli_creds[@]}" listinvoices | jq -r .last_index_offset)
+	PAYMENTS=$(lncli $"${lncli_creds[@]}" listpayments | jq '.payments | length')
+
+	CHAN_STATE=$(($ROUTED + $INVOICES + $PAYMENTS))
+}
+
 
 # SETUP LNCLI COMMAND FOR ROOT USER
 chain="$(bitcoin-cli -datadir=${bitcoin_dir} getblockchaininfo | jq -r '.chain')"
@@ -92,7 +119,7 @@ else
 fi
 lncli_creds=( --macaroonpath=${macaroon_path} --tlscertpath=${lnd_dir}/tls.cert)
 
-# GET LND CHANNEL STATE
+# GET PRIOR BACKUP'S LND CHANNEL STATE, IF IT EXISTS
 if [[ ! -e ${CHANSTATEFILE} ]]; then
 	LAST_STATE=0
 elif [ ! $STOP_LND = false ] ; then
@@ -101,14 +128,10 @@ else
 	LAST_STATE=$(tail -n 1 ${CHANSTATEFILE})
 fi
 
+# EXECUTE CHANNEL-STATE-CHANGE CHECKS AND LOGGING
 check_lnd_status
 if [ ! $LNDSTOPPED = true ] ; then
-	# <start> LND CHANNEL STATE CHECKS
-	ROUTED=$(lncli $"${lncli_creds[@]}" fwdinghistory --start_time 1 --end_time 2000000000 | jq -r .last_offset_index)
-	INVOICES=$(lncli $"${lncli_creds[@]}" listinvoices | jq -r .last_index_offset)
-	PAYMENTS=$(lncli $"${lncli_creds[@]}" listpayments | jq '.payments | length')
-	# < end > LND CHANNEL STATE CHECKS
-	CHAN_STATE=$(($ROUTED + $INVOICES + $PAYMENTS))
+	fetch_channel_state
 	echo "---" >> $CHANSTATEFILE
 	echo "$? $(date)" >> $CHANSTATEFILE
 	if [ ! $STOP_LND = false ] ; then
@@ -123,6 +146,7 @@ else
 	STATE_CHANGE=-1
 fi
 
+# TERMINATE SCRIPT IF NO CHANGES DETECTED OR CHANGES IGNORED
 echo "State change: "$STATE_CHANGE
 if [[ $STATE_CHANGE -eq 0 && $STATE_IGNORE = false ]] ; then
         echo "No channel state change detected"
@@ -138,10 +162,12 @@ fi
 # ...exits above if no state change detected
 #==================
 
+
+
 # ENSURE LND WAS SUCCESSFULLY STOPPED
 max_tries=4
 count=0
-while [[ ! $LNDSTOPPED = true && $count -lt $(($max_tries - 1)) ]] ; do
+while [[ ! $LNDSTOPPED = true && $count -lt $(($max_tries - 1)) && ! $STOP_LND = false ]] ; do
         stop_lnd
         count=$(($count+1))
         echo "Lnd stop, attempt#: "$(( $count  + 1 ))" of "$max_tries
@@ -199,19 +225,35 @@ fi
 
 #==============================
 # The archive file can be backed up via rsync or a cloud service now.
+#==============================
 
-# CHECK IF ONLINE
-wget -q --tries=10 --timeout=20 --spider http://google.com
-if [[ $? -eq 0 ]]; then
-        ONLINE=true
-else
-        ONLINE=false
-fi
-echo
-echo "Online: "$ONLINE
-echo "-----"
+function online_check {
+	wget -q --tries=10 --timeout=20 --spider http://google.com
+	if [[ $? -eq 0 ]]; then
+	        ONLINE=true
+	else
+	        ONLINE=false
+	fi
+	echo
+	echo "Online: "$ONLINE
+	echo "-----"
+}
 
-# UPLOAD TO DROPBOX
+#==============================
+# BACKUP VIA DROPBOX
+#==============================
+
+function dropbox_api_check {
+	curl -s -X POST https://api.dropboxapi.com/2/users/get_current_account \
+	    --header "Authorization: Bearer "$APITOKEN | grep rror
+	if [[ ! $? -eq 0 ]] ; then
+	        VALID_APITOKEN=true
+	else
+	        VALID_APITOKEN=false
+	fi
+}
+
+
 function upload_to_dropbox {
 	echo
 	echo "Starting Dropbox upload..."
@@ -230,13 +272,38 @@ function upload_to_dropbox {
 	echo $FINISH | jq
 }
 
-if [ $ONLINE = true -a -e ${BACKUPFILE} ] ; then
+# EXECUTE BACKUP VIA DROPBOX
+online_check
+dropbox_api_check
+if [ $ONLINE = true -a -e ${BACKUPFILE} -a $VALID_APITOKEN = true ] ; then
 	upload_to_dropbox
+	rm ${BACKUPFILE}
 else
 	echo "Please check that the internet is connected and try again."
 fi
 
-# CLEANUP & FINISH
-rm ${BACKUPFILE}
+# FINISH DROPBOX BACKUP
+#=================================================================
+
+
+#====================================
+# BACKUP VIA RSYNC TO REMOTE SERVER
+#====================================
+
+# Consider adding this as a backup method
+
+
+
+#====================================
+# BACKUP VIA GOOGLE CLOUD
+#====================================
+
+# Consider adding this as a backup method
+
+
+#----------------------------------------------
+# FINISH
 echo
-echo "Done!"
+echo "======="
+echo " Done!"
+echo "======="
