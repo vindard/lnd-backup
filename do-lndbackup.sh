@@ -5,7 +5,7 @@
 #==============================
 
 # SET DROPBOX API KEY FOR UPLOADS
-APITOKEN=""
+DROPBOX_APITOKEN=""
 
 # SET GPG KEY FOR ENCRYPTING WITH (COMPRESSES AS WELL)
 GPG=""
@@ -36,7 +36,7 @@ done
 # Arguments
 while getopts :d: opt; do
         case $opt in
-                d) APITOKEN=$OPTARG ;;
+                d) DROPBOX_APITOKEN=$OPTARG ;;
                 ?) ;;
         esac
 done
@@ -245,11 +245,11 @@ function online_check {
 
 function dropbox_api_check {
 	curl -s -X POST https://api.dropboxapi.com/2/users/get_current_account \
-	    --header "Authorization: Bearer "$APITOKEN | grep rror
+	    --header "Authorization: Bearer "$DROPBOX_APITOKEN | grep rror
 	if [[ ! $? -eq 0 ]] ; then
-	        VALID_APITOKEN=true
+	        VALID_DROPBOX_APITOKEN=true
 	else
-	        VALID_APITOKEN=false
+	        VALID_DROPBOX_APITOKEN=false
 	fi
 }
 
@@ -258,14 +258,14 @@ function upload_to_dropbox {
 	echo
 	echo "Starting Dropbox upload..."
 	SESSIONID=$(curl -s -X POST https://content.dropboxapi.com/2/files/upload_session/start \
-	    --header "Authorization: Bearer "${APITOKEN}"" \
+	    --header "Authorization: Bearer "${DROPBOX_APITOKEN}"" \
 	    --header "Dropbox-API-Arg: {\"close\": false}" \
 	    --header "Content-Type: application/octet-stream" | jq -r .session_id)
 	echo "--> Session ID: "${SESSIONID}
 	echo
 	echo "Uploading "${BACKUPFILE}"..."
 	FINISH=$(curl -X POST https://content.dropboxapi.com/2/files/upload_session/finish \
-	    --header "Authorization: Bearer "${APITOKEN}"" \
+	    --header "Authorization: Bearer "${DROPBOX_APITOKEN}"" \
 	    --header "Dropbox-API-Arg: {\"cursor\": {\"session_id\": \""${SESSIONID}"\",\"offset\": 0},\"commit\": {\"path\": \"/"${BACKUPFOLDER}"/"${BACKUPFILE}"\",\"mode\": \"add\",\"autorename\": true,\"mute\": false,\"strict_conflict\": false}}" \
 	    --header "Content-Type: application/octet-stream" \
 	    --data-binary @$BACKUPFILE)
@@ -275,7 +275,7 @@ function upload_to_dropbox {
 # EXECUTE BACKUP VIA DROPBOX
 online_check
 dropbox_api_check
-if [ $ONLINE = true -a -e ${BACKUPFILE} -a $VALID_APITOKEN = true ] ; then
+if [ $ONLINE = true -a -e ${BACKUPFILE} -a $VALID_DROPBOX_APITOKEN = true ] ; then
 	upload_to_dropbox
 	rm ${BACKUPFILE}
 else
