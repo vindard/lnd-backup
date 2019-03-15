@@ -46,7 +46,7 @@ lnd_dir="/home/bitcoin/.lnd"
 bitcoin_dir="/home/bitcoin/.bitcoin"
 
 # Fetches the user whose home folder the directories will be stored under
-ADMINUSER=$(getent passwd | grep /bin/bash | grep -v 'root\|bitcoin' | tail -n 1 | grep -oE '/[^/]+:' | cut -c2- | rev | cut -c2- | rev)
+ADMINUSER=( $(ls /home | grep -v bitcoin) )
 
 DATE=$(date +%Y%m%d)
 TIME=$(date +%Hh%Mm)
@@ -219,8 +219,10 @@ function encrypt_backup {
 
 if [ ! -z $GPG ] ; then
 	echo "------------"
-	echo "Starting gpg encryption..."
+	echo "Running gpg encryption..."
 	encrypt_backup
+	echo "Encrypted!"
+	echo
 fi
 
 #==============================
