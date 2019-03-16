@@ -4,14 +4,14 @@
 # OPTIONAL USER HARDCODED VARIABLES
 #==============================
 
-# SET DROPBOX API KEY FOR UPLOADS
-DROPBOX_APITOKEN=""
-
 # SET GPG KEY FOR ENCRYPTING WITH (COMPRESSES AS WELL)
 GPG=""
 
 # SET A DEVICE NAME TO BE USED FOR BACKUPS, DEFAULTS TO /etc/hostname
 DEVICE=""
+
+# SET DROPBOX API KEY FOR UPLOADS
+DROPBOX_APITOKEN=""
 
 
 #==============================
@@ -24,12 +24,16 @@ STOP_LND=false
 # if true, backup whether state change or not
 STATE_IGNORE=false
 
+# if true, treat as encrypted (whether encrypted or not) to pass upload pre-checks
+ENCRYPTION_OVERRIDE=false
+
 # Flags
 for f in $@
 do
 	case $f in
 		"-f") STATE_IGNORE=true ;;
 		"-s") STOP_LND=true ;;
+		"-u") ENCRYPTION_OVERRIDE=true ;;
 	esac
 done
 
@@ -147,6 +151,7 @@ else
 fi
 
 # TERMINATE SCRIPT IF NO CHANGES DETECTED OR CHANGES IGNORED
+echo "------------"
 echo "State change: "$STATE_CHANGE
 if [[ $STATE_CHANGE -eq 0 && $STATE_IGNORE = false ]] ; then
         echo "No channel state change detected"
@@ -215,6 +220,7 @@ function encrypt_backup {
 	gpg --trust-model always -r ${GPG} -e ${BACKUPFILE}
 	rm ${BACKUPFILE}
 	BACKUPFILE=$BACKUPFILE.gpg
+	chown -R ${ADMINUSER}:${ADMINUSER} ${BACKUPFILE}
 }
 
 if [ ! -z $GPG ] ; then
@@ -241,17 +247,60 @@ function online_check {
 	echo "-----"
 }
 
+function encryption_check {
+	FILE_CHECK=$(file ${BACKUPFILE} | grep -c -E "PGP.*encrypted|GPG.*encrypted")
+	if [ $FILE_CHECK -gt 0 ] || [ $ENCRYPTION_OVERRIDE = true ]; then
+		ENCRYPTED=true
+	else
+		ENCRYPTED=false
+	fi
+
+	echo
+	echo -n "Encrypted: "$ENCRYPTED
+	if [ $ENCRYPTION_OVERRIDE = true ] ; then
+		echo " [overridden]"
+	else
+		echo
+	fi
+	echo "-----"
+}
+
 #==============================
 # BACKUP VIA DROPBOX
 #==============================
 
 function dropbox_api_check {
+	VALID_DROPBOX_APITOKEN=false
 	curl -s -X POST https://api.dropboxapi.com/2/users/get_current_account \
 	    --header "Authorization: Bearer "$DROPBOX_APITOKEN | grep rror
 	if [[ ! $? -eq 0 ]] ; then
 	        VALID_DROPBOX_APITOKEN=true
 	else
-	        VALID_DROPBOX_APITOKEN=false
+		echo "Invalid Dropbox API Token!"
+	fi
+}
+
+
+function dropbox_upload_check {
+	UPLOAD_TO_DROPBOX=false
+	if [ ! -z $DROPBOX_APITOKEN ] ; then
+		online_check
+		if [ $ONLINE = true ] ; then
+			dropbox_api_check
+		else
+			echo "Please check that the internet is connected and try again."
+		fi
+
+		if [ $VALID_DROPBOX_APITOKEN = true ] ; then
+			encryption_check
+			if [ $ENCRYPTED = true ] ; then
+				UPLOAD_TO_DROPBOX=true
+			else
+				echo "Sorry can't safely upload, backup archive not encrypted."
+				echo
+				echo "If you would like to upload an unencrypted backup file (unsafe), please run again with '-u' flag."
+			fi
+		fi
 	fi
 }
 
@@ -274,14 +323,13 @@ function upload_to_dropbox {
 	echo $FINISH | jq
 }
 
-# EXECUTE BACKUP VIA DROPBOX
-online_check
-dropbox_api_check
-if [ $ONLINE = true -a -e ${BACKUPFILE} -a $VALID_DROPBOX_APITOKEN = true ] ; then
+
+
+# RUN CHECKS AND IF PASS, EXECUTE BACKUP TO DROPBOX
+dropbox_upload_check
+if [ $UPLOAD_TO_DROPBOX = true ] ; then
 	upload_to_dropbox
 	rm ${BACKUPFILE}
-else
-	echo "Please check that the internet is connected and try again."
 fi
 
 # FINISH DROPBOX BACKUP
