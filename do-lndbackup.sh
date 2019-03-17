@@ -1,4 +1,6 @@
 #!/bin/bash
+echo "Backup script started!"
+echo
 
 #==============================
 # OPTIONAL USER HARDCODED VARIABLES
@@ -12,6 +14,14 @@ DEVICE=""
 
 # SET DROPBOX API KEY FOR UPLOADS
 DROPBOX_APITOKEN=""
+
+# SET MINIMUM ELAPSED TIMES AFTER WHICH SCRIPT WILL RUN EVEN IF NO STATE CHANGES
+# Set as '<num>h' for hours, '<num>m' for mins or '<num>' for seconds
+#--
+# STOP: Checks against the last "lnd was stopped" backup
+STOP_RUN_MINTIME=""
+# ABS: Checks against the absolute last backup, whether lnd was stopped or not
+ABS_RUN_MINTIME=""
 
 
 #==============================
@@ -27,6 +37,9 @@ STATE_IGNORE=false
 # if true, treat as encrypted (whether encrypted or not) to pass upload pre-checks
 ENCRYPTION_OVERRIDE=false
 
+# "infinite" default time used to ensure default minimum time run checks fail
+DEFAULT_RUN_MINTIME=2100000000
+
 # Flags
 for f in $@
 do
@@ -38,9 +51,11 @@ do
 done
 
 # Arguments
-while getopts :d: opt; do
+while getopts :d:m:n: opt; do
         case $opt in
                 d) DROPBOX_APITOKEN=$OPTARG ;;
+		m) STOP_RUN_MINTIME=$OPTARG ;;
+		n) ABS_RUN_MINTIME=$OPTARG ;;
                 ?) ;;
         esac
 done
@@ -52,8 +67,9 @@ bitcoin_dir="/home/bitcoin/.bitcoin"
 # Fetches the user whose home folder the directories will be stored under
 ADMINUSER=( $(ls /home | grep -v bitcoin) )
 
-DATE=$(date +%Y%m%d)
-TIME=$(date +%Hh%Mm)
+DATE_SRC=$(date +%s)
+DATE=$(date -d @$DATE_SRC +%Y%m%d)
+TIME=$(date -d @$DATE_SRC +%Hh%Mm)
 if [ -z "$DEVICE" ] ; then
 	DEVICE=$(echo $(cat /etc/hostname))
 fi
@@ -61,7 +77,7 @@ DEVICE=$(echo $DEVICE | awk '{print tolower($0)}' | sed -e 's/ /-/g')
 
 # Setup folders and filenames
 DATADIR=/home/bitcoin/.lnd
-WORKINGDIR=/home/$ADMINUSER/data-backups
+WORKINGDIR=/home/$ADMINUSER/lnd-data-backups
 BACKUPFOLDER=.lndbackup-$DEVICE
 BACKUPFILE=lndbackup-$DEVICE--$DATE-$TIME.tar
 CHANSTATEFILE=.chan_state.txt
@@ -76,6 +92,53 @@ if [[ ! -e ${BACKUPFOLDER} ]]; then
         mkdir -p ${BACKUPFOLDER}
 fi
 
+#==================
+# CHECK TIME ELAPSED TO DETERMINE IF TO FORCE BACKUP
+#==================
+
+# allow different time formats to be input
+function parse_mintime {
+        PARSED_ARG=$DEFAULT_RUN_MINTIME
+	if [[ $(echo $2 | grep -c -P "^\d+h$") -gt 0 ]] ; then
+                PARSED_ARG=$(( ${2::-1} * 3600 ))
+        elif [[ $(echo $2 | grep -c -P "^\d+m$") -gt 0 ]] ; then
+                PARSED_ARG=$(( ${2::-1} * 60 ))
+        elif [[ $(echo $2 | grep -c -P "^\d+$") -gt 0 ]] ; then
+                PARSED_ARG=$2
+	elif [[ -z $2 ]] ; then
+		true
+        else
+                echo "Invalid parse data :( -> "$2
+        fi
+
+        case $1 in
+                "ABS") ABS_RUN_MINTIME=$PARSED_ARG ;;
+                "STOP") STOP_RUN_MINTIME=$PARSED_ARG ;;
+        esac
+}
+
+# CHECK TIME ELAPSED AGAINST MINIMUM TIME BEFORE NEXT RUN
+#---------
+
+# Set variables
+ABS_ELAPSED=$(( $DATE_SRC - $(tail -n 2 .chan_state.txt | head -n 1 | jq -r .date) ))
+STOP_ELAPSED=$(( $DATE_SRC - $(cat .chan_state.txt | grep stopped | jq -r .date | tail -n 1) ))
+parse_mintime "STOP" $STOP_RUN_MINTIME
+parse_mintime "ABS" $ABS_RUN_MINTIME
+
+if [ ! $ABS_RUN_MINTIME -eq $DEFAULT_RUN_MINTIME ] ; then
+	echo "Abs Elapsed: "$ABS_ELAPSED"  |  Abs Min Time: "$ABS_RUN_MINTIME
+fi
+if [ ! $STOP_RUN_MINTIME -eq $DEFAULT_RUN_MINTIME ] ; then
+	echo "Stop Elapsed: "$STOP_ELAPSED"  |  Stop Min Time: "$STOP_RUN_MINTIME
+fi
+
+# Decide if to ignore state or not
+if [[ ! $STOP_LND = false && $STOP_ELAPSED -gt $STOP_RUN_MINTIME ]] ; then
+	STATE_IGNORE=true
+elif [[ $ABS_ELAPSED -gt $ABS_RUN_MINTIME ]] ; then
+	STATE_IGNORE=true
+fi
 
 
 #==================
@@ -127,21 +190,28 @@ lncli_creds=( --macaroonpath=${macaroon_path} --tlscertpath=${lnd_dir}/tls.cert)
 if [[ ! -e ${CHANSTATEFILE} ]]; then
 	LAST_STATE=0
 elif [ ! $STOP_LND = false ] ; then
-	LAST_STATE=$(tail -n 100 ${CHANSTATEFILE} | grep stopped | jq -r .stopped | tail -n 1)
+	LAST_STATE=$(cat ${CHANSTATEFILE} | grep stopped | jq -r .stopped | tail -n 1)
 else
 	LAST_STATE=$(tail -n 1 ${CHANSTATEFILE})
 fi
 
 # EXECUTE CHANNEL-STATE-CHANGE CHECKS AND LOGGING
 check_lnd_status
-if [ ! $LNDSTOPPED = true ] ; then
-	fetch_channel_state
+
+function update_run_log {
 	echo "---" >> $CHANSTATEFILE
-	echo "$? $(date)" >> $CHANSTATEFILE
+	date -d @$DATE_SRC >> $CHANSTATEFILE
+	echo -n "{\"date\": \""$DATE_SRC"\"" >> $CHANSTATEFILE
 	if [ ! $STOP_LND = false ] ; then
-		echo "{\"stopped\": \""$CHAN_STATE"\"}" >> $CHANSTATEFILE
+		echo ", \"stopped\": \""$CHAN_STATE"\"}" >> $CHANSTATEFILE
+	else
+		echo "}" >> $CHANSTATEFILE
 	fi
 	echo $CHAN_STATE >> $CHANSTATEFILE
+}
+
+if [ ! $LNDSTOPPED = true ] ; then
+	fetch_channel_state
 	BACKUPFILE=${BACKUPFILE::-4}"--state-"$(printf "%04d\n" $((${CHAN_STATE}))).tar
 
 	STATE_CHANGE=$(("$LAST_STATE" - "$CHAN_STATE"))
@@ -150,11 +220,12 @@ else
 	STATE_CHANGE=-1
 fi
 
+
 # TERMINATE SCRIPT IF NO CHANGES DETECTED OR CHANGES IGNORED
 echo "------------"
 echo "State change: "$STATE_CHANGE
 if [[ $STATE_CHANGE -eq 0 && $STATE_IGNORE = false ]] ; then
-        echo "No channel state change detected"
+	echo "No channel state change detected"
 	/bin/sleep 0.5
 	echo "exiting..."
         /bin/sleep 1
@@ -204,11 +275,17 @@ if [ $LNDSTOPPED = true ] ; then
 	echo "Restarted lnd!"
 fi
 
-# CREATE ARCHIVE OF DATA TO BE UPLOADED
+# CREATE ARCHIVE OF DATA TO BE SAVED/UPLOADED
 echo "------------"
 echo "Creating tar archive of files..."
 tar cvf ${BACKUPFILE} ${BACKUPFOLDER}/
 chown -R ${ADMINUSER}:${ADMINUSER} ${BACKUPFOLDER} ${BACKUPFILE}
+# Update log here because everything else below this is optional
+update_run_log
+
+#==============================
+# ENCRYPTING THE ARCHIVE FILE BEFORE CLOUD UPLOAD.
+#==============================
 
 # GPG ENCRYPT ARCHIVE
 function encrypt_backup {
