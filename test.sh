@@ -5,6 +5,7 @@ BACKUPFOLDER=.lndbackup-$DEVICE
 # Hardcoded constants
 KEEP_MAX=5
 KEEP_STOP=7
+GREP_KEEP=stop
 
 
 #-----------------
@@ -38,11 +39,9 @@ function make_delete_list {
 # Get all files commands
 function get_files_local {
 	GREP_FILES='\S*\.tar|\S*\.gpg$'
-	GREP_KEEP=stop
 	FILES=( $(ls -ctalh | grep -Po $GREP_FILES) )
 	FILES_STOP=( $(ls -ctalh | grep -Po $GREP_FILES | grep $GREP_KEEP) )
 	FILES_NOSTOP=( $(ls -ctalh | grep -Po $GREP_FILES | grep -v $GREP_KEEP) )
-	fetched=true
 }
 
 # Delete function taking the "FILES_TO_DELETE" array as input
@@ -55,44 +54,14 @@ function delete_files_local {
 #-----------------
 # DROPBOX FILES FUNCTIONS
 
-function file_calls_dropbox {
-FILES=( $(curl -s -X POST https://api.dropboxapi.com/2/files/list_folder \
-    --header "Authorization: Bearer "$DROPBOX_APITOKEN \
-    --header "Content-Type: application/json" \
-    --data "{\"path\": \"/"$BACKUPFOLDER"\",\"recursive\": false,\"include_media_info\": false,\"include_deleted\": false,\"include_has_explicit_shared_members\": false,\"include_mounted_folders\": true}" \
-    | jq -r .entries[].name) )
-
-FILES_STOP=( $(curl -s -X POST https://api.dropboxapi.com/2/files/list_folder \
-    --header "Authorization: Bearer "$DROPBOX_APITOKEN \
-    --header "Content-Type: application/json" \
-    --data "{\"path\": \"/"$BACKUPFOLDER"\",\"recursive\": false,\"include_media_info\": false,\"include_deleted\": false,\"include_has_explicit_shared_members\": false,\"include_mounted_folders\": true}" \
-    | jq -r .entries[].name | grep stop) )
-
-FILES_NOSTOP=( $(curl -s -X POST https://api.dropboxapi.com/2/files/list_folder \
-    --header "Authorization: Bearer "$DROPBOX_APITOKEN \
-    --header "Content-Type: application/json" \
-    --data "{\"path\": \"/"$BACKUPFOLDER"\",\"recursive\": false,\"include_media_info\": false,\"include_deleted\": false,\"include_has_explicit_shared_members\": false,\"include_mounted_folders\": true}" \
-    | jq -r .entries[].name | grep -v stop) )
-}
-
-
 function get_files_dropbox {
-	echo "Fetching file lists from Dropbox..."
-	max_tries=3
-	fetched=false
-	count=0
-	while [[ $count -lt $max_tries ]] ; do
-		file_calls_dropbox
-		if [[ ${#FILES[@]} = $(( ${#FILES_STOP[@]} + ${#FILES_NOSTOP[@]} )) && ! ${#FILES[@]} = 0 ]] ; then
-			echo "All lists fetched!"
-			echo
-			count=$max_tries
-			fetched=true
-		else
-			count=$(( $count + 1 ))
-			echo $count" tries; trying again..."
-		fi
-	done
+	FILES=( $(curl -s -X POST https://api.dropboxapi.com/2/files/list_folder \
+	    --header "Authorization: Bearer "$DROPBOX_APITOKEN \
+	    --header "Content-Type: application/json" \
+	    --data "{\"path\": \"/"$BACKUPFOLDER"\",\"recursive\": false,\"include_media_info\": false,\"include_deleted\": false,\"include_has_explicit_shared_members\": false,\"include_mounted_folders\": true}" \
+	    | jq -r .entries[].name) )
+	FILES_STOP=( $(printf '%s\n' "${FILES[@]}" | grep $GREP_KEEP) )
+	FILES_NOSTOP=( $(printf '%s\n' "${FILES[@]}"  | grep -v $GREP_KEEP) )
 }
 
 
@@ -101,11 +70,7 @@ function get_files_dropbox {
 
 #get_files_local
 get_files_dropbox
-if [[ $fetched = true ]] ; then
-	make_delete_list
-else
-	echo "Files could not be fetched for pruning clean-up."
-fi
+make_delete_list
 #delete_files_local
 
 
