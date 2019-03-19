@@ -120,26 +120,31 @@ function parse_mintime {
 # CHECK TIME ELAPSED AGAINST MINIMUM TIME BEFORE NEXT RUN
 #---------
 
-# Set variables
-ABS_ELAPSED=$(( $DATE_SRC - $(tail -n 2 .chan_state.txt | head -n 1 | jq -r .date) ))
-STOP_ELAPSED=$(( $DATE_SRC - $(cat .chan_state.txt | grep stopped | jq -r .date | tail -n 1) ))
-parse_mintime "STOP" $STOP_RUN_MINTIME
-parse_mintime "ABS" $ABS_RUN_MINTIME
+function check_time_for_run {
+	# Set variables
+	ABS_ELAPSED=$(( $DATE_SRC - $(tail -n 2 .chan_state.txt | head -n 1 | jq -r .date) ))
+	STOP_ELAPSED=$(( $DATE_SRC - $(cat .chan_state.txt | grep stopped | jq -r .date | tail -n 1) ))
+	parse_mintime "STOP" $STOP_RUN_MINTIME
+	parse_mintime "ABS" $ABS_RUN_MINTIME
 
-if [ ! $ABS_RUN_MINTIME -eq $DEFAULT_RUN_MINTIME ] ; then
-	echo "Abs Elapsed: "$ABS_ELAPSED"  |  Abs Min Time: "$ABS_RUN_MINTIME
-fi
-if [ ! $STOP_RUN_MINTIME -eq $DEFAULT_RUN_MINTIME ] ; then
-	echo "Stop Elapsed: "$STOP_ELAPSED"  |  Stop Min Time: "$STOP_RUN_MINTIME
-fi
+	if [ ! $ABS_RUN_MINTIME -eq $DEFAULT_RUN_MINTIME ] ; then
+		echo "Abs Elapsed: "$ABS_ELAPSED"  |  Abs Min Time: "$ABS_RUN_MINTIME
+	fi
+	if [ ! $STOP_RUN_MINTIME -eq $DEFAULT_RUN_MINTIME ] ; then
+		echo "Stop Elapsed: "$STOP_ELAPSED"  |  Stop Min Time: "$STOP_RUN_MINTIME
+	fi
 
-# Decide if to ignore state or not
-if [[ ! $STOP_LND = false && $STOP_ELAPSED -gt $STOP_RUN_MINTIME ]] ; then
-	STATE_IGNORE=true
-elif [[ $ABS_ELAPSED -gt $ABS_RUN_MINTIME ]] ; then
-	STATE_IGNORE=true
-fi
+	# Decide if to ignore state or not
+	if [[ ! $STOP_LND = false && $STOP_ELAPSED -gt $STOP_RUN_MINTIME ]] ; then
+		STATE_IGNORE=true
+	elif [[ $ABS_ELAPSED -gt $ABS_RUN_MINTIME ]] ; then
+		STATE_IGNORE=true
+	fi
+}
 
+if [[ -e ${CHANSTATEFILE} ]]; then
+	check_time_for_run
+fi
 
 #==================
 # CHECK CHANNEL STATE TO DETERMINE IF TO CONTINUE WITH BACKUP
