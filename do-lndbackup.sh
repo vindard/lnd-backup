@@ -177,8 +177,11 @@ function fetch_channel_state {
 	ROUTED=$(lncli $"${lncli_creds[@]}" fwdinghistory --start_time 1 --end_time 2000000000 | jq -r .last_offset_index)
 	INVOICES=$(lncli $"${lncli_creds[@]}" listinvoices | jq -r .last_index_offset)
 	PAYMENTS=$(lncli $"${lncli_creds[@]}" listpayments | jq '.payments | length')
+	_OPEN=$(lncli $"${lncli_creds[@]}" listchannels | jq '.channels | length')
+	_CLOSED=$(lncli $"${lncli_creds[@]}" closedchannels | jq '.channels | length')
+	OPENORCLOSED_TRACK=$(( $(( $_CLOSED * 2 )) + $_OPEN ))
 
-	CHAN_STATE=$(($ROUTED + $INVOICES + $PAYMENTS))
+	CHAN_STATE=$(($ROUTED + $INVOICES + $PAYMENTS + $OPENORCLOSED_TRACK))
 }
 
 
