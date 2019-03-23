@@ -181,6 +181,22 @@ function fetch_channel_state {
 	done
 }
 
+# Function to write fetched state to log
+function update_run_log {
+	echo "---" >> $CHANSTATEFILE
+	date -d @$DATE_SRC >> $CHANSTATEFILE
+	echo -n "{\"date\": \""$DATE_SRC"\"" >> $CHANSTATEFILE
+	if [ ! $STOP_LND = false ] ; then
+		echo ", \"stopped\": \""$CHAN_STATE"\"}" >> $CHANSTATEFILE
+	else
+		echo "}" >> $CHANSTATEFILE
+	fi
+	echo $CHAN_STATE >> $CHANSTATEFILE
+}
+
+#==================
+# START EXECUTION LOGIC
+#==================
 
 # SETUP LNCLI COMMAND FOR ROOT USER
 chain="$(bitcoin-cli -datadir=${bitcoin_dir} getblockchaininfo | jq -r '.chain')"
@@ -202,18 +218,6 @@ fi
 
 # EXECUTE CHANNEL-STATE-CHANGE CHECKS AND LOGGING
 check_lnd_status
-
-function update_run_log {
-	echo "---" >> $CHANSTATEFILE
-	date -d @$DATE_SRC >> $CHANSTATEFILE
-	echo -n "{\"date\": \""$DATE_SRC"\"" >> $CHANSTATEFILE
-	if [ ! $STOP_LND = false ] ; then
-		echo ", \"stopped\": \""$CHAN_STATE"\"}" >> $CHANSTATEFILE
-	else
-		echo "}" >> $CHANSTATEFILE
-	fi
-	echo $CHAN_STATE >> $CHANSTATEFILE
-}
 
 if [ ! $LNDSTOPPED = true ] ; then
 	fetch_channel_state
