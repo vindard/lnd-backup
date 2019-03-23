@@ -5,15 +5,66 @@ BACKUPFOLDER=.lndbackup-$DEVICE
 # Hardcoded constants
 KEEP_MAX=20
 KEEP_STOP=7
-GREP_KEEP=stop
+GREP_KEEP='stop.*state'
 
 
 #-----------------
 # SHARED FUNCTIONS
 
+
+# Function to ensure that 'non-state stops' dont get overwritten
+# by inflight backups should a large number of inflights be made
+# after a legitimate 'non-state stop' backup.
+#
+# e.g. scenario: if lnd was inactive and the script restarted it
+# with one good 'non-state stop' backup as the latest good stopped
+# backup of the .lnd folder.
+function swap_files {
+	# Note: This num_to_move takes the highest priority. It edges inflight backups
+	# out first and then 'stopped-state' backups after. Keep lower than KEEP_STOP
+	# to ensure 'stopped-state' backups aren't all deleted.
+	num_to_move=1
+
+        move_search=*'stop'*
+        move_exclude=*'state'*
+        temp=( "${FILES_TO_DELETE[@]}" )
+
+        # Set num_to_move so that swaps don't exceed 2nd array length
+        num_to_move=$(( ${#FILES_TO_KEEP[@]} > $num_to_move ? $num_to_move : ${#FILES_TO_KEEP[@]} ))
+	echo "Num to move: "$num_to_move
+
+        # Set num_to_move to actually be 'num to remain' in 2nd array
+        count2=0
+        for file2 in ${FILES_TO_KEEP[@]}
+        do
+                if [[ $file2 == $move_search ]] && [[ ! $file2 == $move_exclude ]] ; then
+                        ((++count2))
+                fi
+        done
+        num_to_move=$(( $num_to_move - $count2 ))
+
+
+        # Execute swap across both arrays
+        i=0
+        count=0
+        for file in ${FILES_TO_DELETE[@]}
+        do
+                if [[ $file == $move_search ]] && [[ ! $file == $move_exclude ]] && [ $count -lt $num_to_move ] ; then
+                        echo "Moving: "$file
+			unset 'temp[$(($i-$count))]'
+                        temp=( "${temp[@]}" "${FILES_TO_KEEP[-1]}" )
+                        unset 'FILES_TO_KEEP[-1]'
+                        FILES_TO_KEEP=( "$file" "${FILES_TO_KEEP[@]}" )
+                        ((++count))
+                fi
+                ((++i))
+        done
+        FILES_TO_DELETE=( "${temp[@]}" )
+}
+
 # Pass 2 integers (KEEP_MAX, KEEP_STOP) and 2 arrays (FILES_STOP, FILES_NOSTOP)
 function make_delete_list {
-	if [[ $KEEP_STOP -gt $KEEP_MAX ]] ; then
+	if [[ ! $KEEP_STOP -lt $KEEP_MAX ]] ; then
 		KEEP_STOP=KEEP_MAX
 	fi
 	NUM_STOP_DELETE=$(( ${#FILES_STOP[@]} - $KEEP_STOP ))
@@ -29,8 +80,9 @@ function make_delete_list {
 	FILES_NOSTOP_KEEP=( "${FILES_NOSTOP[@]::$KEEP_NOSTOP}" )
 
 	FILES_TO_DELETE=( "${FILES_STOP_DELETE[@]}" "${FILES_NOSTOP_DELETE[@]}" )
-
 	FILES_TO_KEEP=( "${FILES_STOP_KEEP[@]}" "${FILES_NOSTOP_KEEP[@]}" )
+
+	swap_files
 }
 
 #-----------------
@@ -38,9 +90,9 @@ function make_delete_list {
 
 # Get all files commands
 function get_files_local {
-	GREP_FILES='\S*\.tar|\S*\.gpg$'
+	GREP_FILES='\S*\.tar$|\S*\.gpg$'
 	FILES=( $(ls -ctalh | grep -Po $GREP_FILES) )
-	FILES_STOP=( $(ls -ctalh | grep -Po $GREP_FILES | grep $GREP_KEEP) )
+	FILES_STOP=( $(ls -ctalh | grep -Po $GREP_FILES | grep -P $GREP_KEEP) )
 	FILES_NOSTOP=( $(ls -ctalh | grep -Po $GREP_FILES | grep -v $GREP_KEEP) )
 }
 
@@ -48,6 +100,7 @@ function get_files_local {
 function delete_files_local {
 	rm ${FILES_TO_DELETE[@]} 2> /dev/null
 	ls -clth
+	echo
 }
 
 
@@ -125,9 +178,12 @@ function delete_files_dropbox {
 
 #get_files_local
 get_files_dropbox
+
 make_delete_list
+
 #delete_files_local
 delete_files_dropbox
+
 
 echo "Files: "${FILES[@]}
 echo
