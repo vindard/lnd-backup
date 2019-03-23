@@ -174,14 +174,11 @@ function stop_lnd {
 
 # Function to fetch channel state
 function fetch_channel_state {
-	ROUTED=$(lncli $"${lncli_creds[@]}" fwdinghistory --start_time 1 --end_time 2000000000 | jq -r .last_offset_index)
-	INVOICES=$(lncli $"${lncli_creds[@]}" listinvoices | jq -r .last_index_offset)
-	PAYMENTS=$(lncli $"${lncli_creds[@]}" listpayments | jq '.payments | length')
-	_OPEN=$(lncli $"${lncli_creds[@]}" listchannels | jq '.channels | length')
-	_CLOSED=$(lncli $"${lncli_creds[@]}" closedchannels | jq '.channels | length')
-	OPENORCLOSED_TRACK=$(( $(( $_CLOSED * 2 )) + $_OPEN ))
-
-	CHAN_STATE=$(($ROUTED + $INVOICES + $PAYMENTS + $OPENORCLOSED_TRACK))
+	num_updates_array=( $(lncli listchannels | grep num_updates | grep -oP '\d+') )
+	for num in ${num_updates_array[@]}
+	do
+		CHAN_STATE=$(( $CHAN_STATE + $num ))
+	done
 }
 
 
