@@ -150,6 +150,9 @@ fi
 # CHECK CHANNEL STATE TO DETERMINE IF TO CONTINUE WITH BACKUP
 #==================
 
+# DEFINE STATE CHANGE FUNCTIONS
+# ------------
+
 # Function to check lnd status
 function check_lnd_status {
 	systemctl -q is-active lnd
@@ -194,9 +197,9 @@ function update_run_log {
 	echo $CHAN_STATE >> $CHANSTATEFILE
 }
 
-#==================
-# START EXECUTION LOGIC
-#==================
+
+# RUN STATE CHANGE FUNCTIONS
+# ------------
 
 # SETUP LNCLI COMMAND FOR ROOT USER
 chain="$(bitcoin-cli -datadir=${bitcoin_dir} getblockchaininfo | jq -r '.chain')"
