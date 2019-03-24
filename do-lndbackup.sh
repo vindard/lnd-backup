@@ -186,14 +186,23 @@ function fetch_channel_state {
 
 # Function to write fetched state to log
 function update_run_log {
+	# 1/ Log separator
 	echo "---" >> $CHANSTATEFILE
+
+	# 2/ Log entry date
+	# (Use "$ date -d @$DATE_SRC" instead of "$ date" to
+	#  log script start time instead of script log time)
 	date -d @$DATE_SRC >> $CHANSTATEFILE
+
+	# 3/ Log data object
 	echo -n "{\"date\": \""$DATE_SRC"\"" >> $CHANSTATEFILE
 	if [ ! $STOP_LND = false ] ; then
 		echo ", \"stopped\": \""$CHAN_STATE"\"}" >> $CHANSTATEFILE
 	else
 		echo "}" >> $CHANSTATEFILE
 	fi
+
+	# 4/ Log raw channel state
 	echo $CHAN_STATE >> $CHANSTATEFILE
 }
 
@@ -409,7 +418,7 @@ function upload_to_dropbox {
 	    --header "Dropbox-API-Arg: {\"cursor\": {\"session_id\": \""${SESSIONID}"\",\"offset\": 0},\"commit\": {\"path\": \"/"${BACKUPFOLDER}"/"${BACKUPFILE}"\",\"mode\": \"add\",\"autorename\": true,\"mute\": false,\"strict_conflict\": false}}" \
 	    --header "Content-Type: application/octet-stream" \
 	    --data-binary @$BACKUPFILE)
-	echo $FINISH | jq
+	echo $FINISH | jq .
 }
 
 
