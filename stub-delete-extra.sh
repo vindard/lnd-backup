@@ -8,19 +8,15 @@ KEEP_STOP=7
 GREP_KEEP='stop.*state'
 
 
-#-----------------
-# SHARED FUNCTIONS
-
+# =======================
+# "EXTRA BACKUPS DELETE" FUNCTIONS
+# =======================
 
 # Function to ensure that 'non-state stops' dont get overwritten
 # by inflight backups should a large number of inflights be made
 # after a legitimate 'non-state stop' backup.
-#
-# e.g. scenario: if lnd was inactive and the script restarted it
-# with one good 'non-state stop' backup as the latest good stopped
-# backup of the .lnd folder.
 function swap_files {
-	# Note: This num_to_move takes the highest priority. It edges inflight backups
+	# Note: This 'num_to_move' value takes the highest priority. It edges inflight backups
 	# out first and then 'stopped-state' backups after. Keep lower than KEEP_STOP
 	# to ensure 'stopped-state' backups aren't all deleted.
 	num_to_move=1
@@ -31,7 +27,6 @@ function swap_files {
 
         # Set num_to_move so that swaps don't exceed 2nd array length
         num_to_move=$(( ${#FILES_TO_KEEP[@]} > $num_to_move ? $num_to_move : ${#FILES_TO_KEEP[@]} ))
-	echo "Num to move: "$num_to_move
 
         # Set num_to_move to actually be 'num to remain' in 2nd array
         count2=0
@@ -85,8 +80,8 @@ function make_delete_list {
 	swap_files
 }
 
+# LOCAL-SPECIFIC FILES FUNCTIONS
 #-----------------
-# LOCAL FILES FUNCTIONS
 
 # Get all files commands
 function get_files_local {
@@ -99,13 +94,11 @@ function get_files_local {
 # Delete function taking the "FILES_TO_DELETE" array as input
 function delete_files_local {
 	rm ${FILES_TO_DELETE[@]} 2> /dev/null
-	ls -clth
-	echo
 }
 
 
+# DROPBOX-SPECIFIC FILES FUNCTIONS
 #-----------------
-# DROPBOX FILES FUNCTIONS
 
 function get_files_dropbox {
 	FILES=( $(curl -s -X POST https://api.dropboxapi.com/2/files/list_folder \
@@ -138,7 +131,6 @@ function check_delete_dropbox {
 		failure=$(echo $CHECK_DEL | jq '.entries[].".tag"' | grep -c failure)
 		echo "-------"
 		echo "Deleted "$success" files successfully ("$failure" files failed)"
-		echo
 	fi
 }
 
@@ -156,8 +148,6 @@ function delete_files_dropbox {
 	dropbox_del_obj=$dropbox_del_obj"]}"
 
 	# Api POST call to delete
-	echo "-----"
-	echo "cleaning up extra files..."
 	DELETE_ID=$(curl -s -X POST https://api.dropboxapi.com/2/files/delete_batch \
 	    --header "Authorization: Bearer "$DROPBOX_APITOKEN \
 	    --header "Content-Type: application/json" \
@@ -172,30 +162,38 @@ function delete_files_dropbox {
 	echo
 }
 
-
-#-----------------
+# =======================
 # RUN CLEANUP
+# =======================
 
-#get_files_local
-get_files_dropbox
+BACKUP_LOC_OPTIONS=( "local" "dropbox" )
+function run_backup_cleanup {
+	# Choose cleanup location from arg passed
+	j=0
+	for option in ${BACKUP_LOC_OPTIONS[@]}
+	do
+		if [ "$1" = "$option" ] ; then
+			CLEANUP_LOC=${BACKUP_LOC_OPTIONS[j]}
+		fi
+		((++j))
+	done
 
-make_delete_list
+	# Execute cleanup
+	echo
+	echo "Starting cleanup of older backup files..."
+	echo "-----"
+	echo "Max number of backups: "$KEEP_MAX
+	get_files_$CLEANUP_LOC
+	echo "Backups found: "${#FILES[@]}
+	echo
+	make_delete_list
+	delete_files_$CLEANUP_LOC
+	echo
+	echo "Cleanup done!"
+	echo "-----"
+	/bin/sleep 0.25s
+	echo "Kept   : "${#FILES_TO_KEEP[@]}" files"
+	echo "Deleted: "${#FILES_TO_DELETE[@]}" files"
+}
 
-#delete_files_local
-delete_files_dropbox
-
-
-echo "Files: "${FILES[@]}
-echo
-echo "Max: "$KEEP_MAX
-echo
-echo "Total: "$(( ${#FILES_STOP[@]} + ${#FILES_NOSTOP[@]} ))
-echo "---"
-echo
-echo "Delete: "$(( ${#FILES_STOP_DELETE[@]} + ${#FILES_NOSTOP_DELETE[@]} ))
-echo
-echo "Files to delete: "${FILES_TO_DELETE[@]}
-echo
-echo "Files to keep: "${FILES_TO_KEEP[@]}
-echo
-echo "-----"
+run_backup_cleanup 'local'
