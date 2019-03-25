@@ -10,7 +10,7 @@ This is a simple script design for the `lnd` implementation of the Lightning Net
 It is designed for a Linux environment, specifically the Raspbian Stretch distro running on a Raspberry Pi 3, but it should also work in any other Linux environment (with maybe minor tweaks).
 
 ## Purpose
-**To make periodic backups that one can use to recover funds from a failed node.**
+**To make periodic backups that one can use to recover at least some funds from a failed node.**
 
 The current failure mode for an lnd node is for the user to lose ***all*** funds currently locked into channels. This solution, while not perfect, seeks to provide at least some avenue for persons to recover funds.
 
@@ -27,7 +27,7 @@ Run your first backup job:
 $ sudo ./do-lndbackup.sh
 ```
 
-This first backup creates the necessary directories and starts storing a state log and your first backup file locally at the hardcoded backup folder: `~/.lndbackup-<your-devoce-name>/`. The default settings for the script would create an unencrypted tar file of your `.lnd` folder and store it locally at this same backup folder.
+This first backup creates the necessary directories and starts storing a state log and your first backup file locally at the hardcoded backup folder: `~/.lndbackup-<your-device-name>/`. The default settings for the script would create an unencrypted tar file of your `.lnd` folder and store it locally at this same backup folder.
 
 
 ### Setting up off-site backups
@@ -35,11 +35,64 @@ To be properly secure, backup files created should ideally be stored on a separa
 
 *Note: The script is designed to only allow **encrypted** versions of your backups to be uploaded to the cloud.*
 
-**1. Setting up gpg encryption**
-* [Steps to get a pgp key]
+* **Setting up gpg encryption**
 
-**2. Dropbox API**
-* [Steps to get a Dropbox API key]
+    Your gpg key is what will be used to encrypt and decrypt the backup files generated. It can be stored on the node device but a backup copy of the key should also be made and stored elsewhere in the event of any hardware failure.
+
+    1. Generate a GPG key pair
+
+        `$ gpg --full-generate-key`
+
+    2. At the prompt, press `Enter` to accept the default RSA and RSA
+
+    3. Enter the desired key size. I recommend the maximum key size of `4096`
+
+    4. Enter the length of time the key should be valid. Press `Enter` to specify the default selection, indicating that the key doesn't expire
+
+    5. Verify that your selections are correct
+
+    6. Enter your user ID information. Recommended: enter your email as `lndbackup@lightningnetwork.com` to make step 8. below easier
+
+    7. Press `Enter` to leave the password prompts blank. Confirm that you would like to continue ***without*** password protection
+
+    8. Get the fingerprint for your new gpg key
+
+        `$ GPG_FGPT=$(gpg --fingerprint --keyid-format long pgp | grep fingerprint | grep -oP '.{19}$' | tr -d ' ' | tee /dev/tty)`
+
+    9. Place the gpg fingerprint into the script
+
+        `$ sed -i "s/GPG=\"\"/GPG=\"$GPG_FGPT\"/" do-lndbackup.sh`
+
+    **Backing up the gpg key:**
+
+    10. Export the gpg private key to a file
+
+        `$ gpg --output lndbackup-decrypt.pgp --armor --export-secret-key lndbackup@lightningnetwork.com`
+
+    11. From another device (e.g. your laptop), copy the file via ssh (scp) from your node device
+
+        `$ scp <user>@<ip>:lndbackup-decrypt.pgp .`
+
+    **Decrypting a backup:**
+
+    12. Optional, if the device was corrupted copy the private key back to your node device and import it
+
+        ```
+        $ scp lndbackup-decrypt.pgp <user>@<ip>:lndbackup-decrypt.pgp
+        $ gpg --import lndbackup-decrypt.pgp
+        ```
+    13. Copy the backup file to the node device
+
+        `$ scp <backup-file> <user>@<ip>:<backup-file>`
+
+    14. Decrypt your encrypted backup file using the gpg key
+
+        `$ gpg --decrypt <backup-file>`
+
+.
+
+* **Dropbox API**
+    1. [Steps to get a Dropbox API key]
 
 
 ### Scheduling automatic backups
@@ -67,7 +120,6 @@ To be properly secure, backup files created should ideally be stored on a separa
 ### Functionality Checklist
 
 - [x] copy `.lnd` folder and package into tar file as backup
-- [x] upload tar file to Dropbox
 - [x] gpg encrypt tar file before upload
 - [x] stop lnd (dump memory to disk), backup data, restart lnd
 - [x] only run backup process if there are channel state changes
