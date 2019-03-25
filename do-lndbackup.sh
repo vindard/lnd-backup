@@ -238,6 +238,7 @@ fi
 check_lnd_status
 
 if [ ! $LNDSTOPPED = true ] ; then
+	WAS_RUNNING=true
 	fetch_channel_state
 	BACKUPFILE=${BACKUPFILE::-4}"--state-"$(printf "%04d\n" $((${CHAN_STATE}))).tar
 
@@ -297,7 +298,7 @@ echo "Starting rsync..."
 rsync -avh --delete --progress ${DATADIR}/ ${BACKUPFOLDER}/
 
 # RESTART LND (AFTER COPY)
-if [ $LNDSTOPPED = true ] ; then
+if [ $LNDSTOPPED = true && $WAS_RUNNING = true ] ; then
 	systemctl start lnd
 	echo "Restarted lnd!"
 fi
