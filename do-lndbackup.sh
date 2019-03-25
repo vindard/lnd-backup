@@ -298,7 +298,7 @@ echo "Starting rsync..."
 rsync -avh --delete --progress ${DATADIR}/ ${BACKUPFOLDER}/
 
 # RESTART LND (AFTER COPY)
-if [ $LNDSTOPPED = true && $WAS_RUNNING = true ] ; then
+if [[ $LNDSTOPPED = true && $WAS_RUNNING = true ]] ; then
 	systemctl start lnd
 	echo "Restarted lnd!"
 fi
