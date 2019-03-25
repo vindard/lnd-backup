@@ -61,7 +61,7 @@ To be properly secure, backup files created should ideally be stored on a separa
 
     9. Place the gpg fingerprint into the script
 
-        `$ sed -i "s/GPG=\"\"/GPG=\"$GPG_FGPT\"/" do-lndbackup.sh`
+        `$ sed -i "s/GPG=\".*\"/GPG=\"$GPG_FGPT\"/" do-lndbackup.sh`
 
     **Backing up the gpg key:**
 
