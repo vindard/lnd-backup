@@ -636,6 +636,10 @@ function run_backup_cleanup {
 		fi
 		((++j))
 	done
+	if [ -z $CLEANUP_LOC ] ; then
+		echo "No valid cleanup options found..."
+		return 1
+	fi
 
 	# Execute cleanup
 	echo
@@ -664,6 +668,5 @@ fi
 #====================================
 
 echo
-echo "======="
 echo " Done!"
 echo "======="
