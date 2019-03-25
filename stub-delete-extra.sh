@@ -5,6 +5,7 @@ BACKUPFOLDER=.lndbackup-$DEVICE
 # Hardcoded constants
 KEEP_MAX=20
 KEEP_STOP=7
+GREP_FILES='\S*\.tar$|\S*\.gpg$'
 GREP_KEEP='stop.*state'
 
 
@@ -85,7 +86,6 @@ function make_delete_list {
 
 # Get all files commands
 function get_files_local {
-	GREP_FILES='\S*\.tar$|\S*\.gpg$'
 	FILES=( $(ls -ctalh | grep -Po $GREP_FILES) )
 	FILES_STOP=( $(ls -ctalh | grep -Po $GREP_FILES | grep -P $GREP_KEEP) )
 	FILES_NOSTOP=( $(ls -ctalh | grep -Po $GREP_FILES | grep -v $GREP_KEEP) )
@@ -106,6 +106,9 @@ function get_files_dropbox {
 	    --header "Content-Type: application/json" \
 	    --data "{\"path\": \"/"$BACKUPFOLDER"\",\"recursive\": false,\"include_media_info\": false,\"include_deleted\": false,\"include_has_explicit_shared_members\": false,\"include_mounted_folders\": true}" \
 	    | jq -r .entries[].name) )
+	FILES=( $(printf '%s\n' "${FILES[@]}" | grep -Po $GREP_FILES) )
+	IFS=$'\n' FILES=($(sort -r <<<"${FILES[*]}"))
+	unset IFS
 	FILES_STOP=( $(printf '%s\n' "${FILES[@]}" | grep $GREP_KEEP) )
 	FILES_NOSTOP=( $(printf '%s\n' "${FILES[@]}"  | grep -v $GREP_KEEP) )
 }
