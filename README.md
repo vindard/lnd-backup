@@ -83,11 +83,11 @@ To be properly secure, backup files created should ideally be stored on a separa
         ```
     13. Copy the backup file to the node device
 
-        `$ scp <backup-file> <user>@<ip>:<backup-file>`
+        `$ scp <backup-file>.gpg <user>@<ip>:<backup-file>.gpg`
 
     14. Decrypt your encrypted backup file using the gpg key
 
-        `$ gpg --decrypt <backup-file>`
+        `$ gpg --decrypt <backup-file>.gpg > <backup-file>`
 
 .
 
