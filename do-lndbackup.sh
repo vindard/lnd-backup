@@ -25,6 +25,7 @@ ABS_RUN_MINTIME=""
 
 # BACKUP CLEANUP CONSTANTS
 KEEP_MAX=20
+# Note: Set KEEP_MAX to "" to disable backup file cleanups
 KEEP_STOP=7
 GREP_FILES='\S*\.tar$|\S*\.gpg$'
 GREP_KEEP='stop.*state'
@@ -654,8 +655,9 @@ function run_backup_cleanup {
 	echo "Deleted: "${#FILES_TO_DELETE[@]}" files"
 }
 
-run_backup_cleanup $BACKUP_LOC
-
+if [ ! -z $KEEP_MAX ] ; then
+	run_backup_cleanup $BACKUP_LOC
+fi
 
 #====================================
 # FINISH
