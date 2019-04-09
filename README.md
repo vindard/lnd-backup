@@ -1,5 +1,3 @@
-### Note: This README is still a work-in-progress!
-
 # Reckless Channel State Backup Tool (for Lnd)
 
 > The Lightning Network is amazing tech, but it's still very early days. We're literally building the ship around us while we're flying and so naturally some things aren't quite finished as yet. One of these things is *the ability to recover* from some sort of failure that might affect the state of the channels database. This is where this "reckless lnd backup" script comes in.
@@ -125,12 +123,20 @@ To be properly secure, backup files created should ideally be stored on a separa
 
 ### Scheduling automatic backups
 
-* [Steps to setup cron jobs]
+* Run `sudo crontab -e` to open your crontab file for editing
 
-```
-0 */6 * * * /bin/bash -l /home/<your-home-folder>/lnd-data-backups/do-lndbackup.sh -s -m 12h
-30 */2 * * * /bin/bash -l /home/<your-home-folder>/lnd-data-backups/do-lndbackup.sh
-```
+* Add the following lines at the end of your crontab file, save and exit
+    
+    *Note: be sure to replace `<your-home-folder>` in each line below to the name of your home folder*
+
+    ```
+    0 */6 * * * /bin/bash -l /home/<your-home-folder>/lnd-data-backups/do-lndbackup.sh -s -m 12h
+    30 */2 * * * /bin/bash -l /home/<your-home-folder>/lnd-data-backups/do-lndbackup.sh
+    ```
+
+Backup jobs will now run every 6 hours on the hour (for stopped-lnd backups), and every 2 hours on the half hour (for running-lnd backups).
+
+
 ### (Optional) Understanding the different backup modes
 * 'stopped' vs. 'inflight' backups
 * state change monitoring and forced runs
