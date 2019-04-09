@@ -99,19 +99,19 @@ To be properly secure, backup files created should ideally be stored on a separa
     
     1. Choose **Dropbox Api**
     
-        ![Dropbox API 1](dropbox-1.png)
+        ![Dropbox API 1](images/dropbox-1.png)
     
     1. Choose **App Folder**
     
-        ![Dropbox API 2](dropbox-2.png)
+        ![Dropbox API 2](images/dropbox-2.png)
     
     1. Name your app and click **Create App** to proceed
     
-        ![Dropbox API 3](dropbox-3.png)
+        ![Dropbox API 3](images/dropbox-3.png)
     
     1. On the settings page for your new app, scroll down to **OAuth 2** and click **Generate**
     
-        ![Dropbox API 4](dropbox-4.png)
+        ![Dropbox API 4](images/dropbox-4.png)
     
     1. You will now see a string of letters and numbers appear. This is your **Api Token**. Copy this token and keep it safe for the next steps. This api token will be referenced as `<dropbox-api-token>` in the next step.
     
