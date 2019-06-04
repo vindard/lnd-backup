@@ -145,11 +145,29 @@ Backup jobs will now run every 6 hours on the hour (for stopped-lnd backups), an
 ---
 ## Some background on "channel states"
 
-`lnd` channels are "stateful". This means that your being able to draw balances and successfully participate in the network *depends* on you having the latest state of your channels. A channel's state is represented by...
+`lnd` channels are "stateful". This means that your being able to determine channel balances and successfully participate in the network *depends* on you having the latest state of your channels. 
+
+A channel's state is represented by the latest HTLC exchanged between the two parties to the channel. The HTLCs themselves are a special type of bitcoin transaction that can be broadcast to the network at any time to close out a channel and return respective funds to both parties' bitcoin wallets.
+
+Any new HTLCs created and exchanged on a channel represent an _updating of the channel state_ where the balance on either side of the channel is updated. New HTLCs invalidate older ones and so there is also some sense of ordering with all the HTLCs that have ever been exchanged on any particular channel.
+
+These HTLCs are stored entirely locally within a "channels database" and are written to the database from memory at certain time intervals. It is this **channels database** that is crucial to being able to use and recover funds from channels on the Lightning Network. 
+
+If a node is powered off unexpectedly or corrupted in some way that the latest HTLCs (latest state) is not available in the database, then when the node comes back on and polls its channel partners it can find itself out of sync and unable to continue using the channel anymore. It also will not have the required info necessary to provide the channel partner to properly close out the channel and funds could potentially be stuck in limbo forever.
+
+> Channels require the latest channel state to both usuable and recoverable in the event of some node failure.
+
+An up-to-date record of the channels database containing the channel state should be available at all times to allow recovery of a node should there be some hardware failure or corruption of the channels database. ***This is where this backup script comes in.***
 
 ## What this tool does
 
-*[Explanation here]*
+The script seeks to make backups of the channels database file at regular intervals to facilitate the restoration, or in worst cases recovery of lost channels should the node ever fail for any reason. It does this by making periodic copies of the necessary files from the `lnd` data folder and allowing the user to back these files up to an off-device location automatically.
+
+> Note: This script was written for versions of lnd before v0.6-beta where the much more reliable [State Channels Backups](https://github.com/lightningnetwork/lnd/blob/master/docs/recovery.md#off-chain-recovery) mechanism was introduced. I also [wrote a new script](https://gist.github.com/vindard/e0cd3d41bb403a823f3b5002488e3f90) that takes advantage of this new SCB mechanism for backup/restoration. Before v0.6-beta, the only option was often complete loss of in-channel funds and so this script was designed as a less-than-ideal way of recovering at least some of those funds in the event of a failure.
+
+##### A real world example
+
+Interestingly enough, I did once experience a failure and had to rely on my own backups generated from this script, the results of which I documented in [this tweet thread](https://twitter.com/vindaRd/status/1114903815826956288). In that instance, I had 35 active channels at the time and of those 12 were closed by my channel partners on node restoration because of stale channels states. I eventually got the funds back from 11 of those 12 closed channels meaning that of my 35 channels this backup script allowed me access to funds in 34 of those instead of the alternative at the time which could have easily been that all in-channel funds were lost.
 
 ### Functionality Checklist
 
